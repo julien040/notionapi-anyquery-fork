@@ -134,8 +134,83 @@ type DateProperty struct {
 }
 
 type DateObject struct {
-	Start *Date `json:"start"`
-	End   *Date `json:"end"`
+	Start    *Date `json:"start"`
+	End      *Date `json:"end"`
+	DateOnly bool  `json:"-"` // Omit from JSON
+}
+
+func (do DateObject) MarshalJSON() ([]byte, error) {
+	// If dateOnly is true, format the date as "2006-01-02"
+	// Otherwise, format the date as UTC "2006-01-02T15:04:05Z"
+
+	toMarshal := map[string]interface{}{}
+
+	if do.Start != nil {
+		if do.DateOnly {
+			toMarshal["start"] = time.Time(*do.Start).Format("2006-01-02")
+		} else {
+			toMarshal["start"] = time.Time(*do.Start).UTC().Format("2006-01-02T15:04:05Z")
+		}
+	}
+
+	if do.End != nil {
+		if do.DateOnly {
+			toMarshal["end"] = time.Time(*do.End).Format("2006-01-02")
+		} else {
+			toMarshal["end"] = time.Time(*do.End).UTC().Format("2006-01-02T15:04:05Z")
+		}
+	}
+
+	return json.Marshal(toMarshal)
+}
+
+func (do *DateObject) UnmarshalJSON(data []byte) error {
+	// For dateOnly, we need to try parsing the date in two formats:
+	// 1. "2006-01-02" (date only)
+	// 2. "2006-01-02T15:04:05Z" (datetime with timezone)
+
+	var raw map[string]string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	if start, ok := raw["start"]; ok {
+		if len(start) == 10 {
+			t, err := time.Parse("2006-01-02", start)
+			if err != nil {
+				return err
+			}
+			do.Start = (*Date)(&t)
+			do.DateOnly = true
+		} else if len(start) > 10 {
+			t, err := time.Parse(time.RFC3339, start)
+			if err != nil {
+				return nil // Skip error
+			}
+			do.Start = (*Date)(&t)
+			do.DateOnly = false
+		}
+	}
+
+	if end, ok := raw["end"]; ok {
+		if len(end) == 10 {
+			t, err := time.Parse("2006-01-02", end)
+			if err != nil {
+				return err
+			}
+			do.End = (*Date)(&t)
+			do.DateOnly = true
+		} else if len(end) > 10 {
+			t, err := time.Parse(time.RFC3339, end)
+			if err != nil {
+				return nil // Skip error
+			}
+			do.End = (*Date)(&t)
+			do.DateOnly = false
+		}
+	}
+
+	return nil
 }
 
 func (p DateProperty) GetID() string {
